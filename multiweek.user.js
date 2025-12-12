@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Barchart Multi-Week Downloader
 // @namespace    http://tampermonkey.net/multiweek
-// @version      1.3
+// @version      1.4
 // @description  3/4/5 haftalık periyotlarla Barchart'tan historical data indirir (date picker + başlangıç seçimi)
 // @author       You
 // @match        https://www.barchart.com/futures/quotes/*/historical-download
@@ -96,8 +96,8 @@
                 end: formatDate(periodEnd)
             });
 
-            // Sonraki periyot: hafta sayısı * 7 gün sonraki Pazar
-            currentSunday.setDate(currentSunday.getDate() + (option.weeks * 7));
+            // Sonraki periyot: her hafta (overlap ile)
+            currentSunday.setDate(currentSunday.getDate() + 7);
         }
 
         return ranges;
