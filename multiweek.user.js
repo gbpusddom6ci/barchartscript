@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Barchart Multi-Week Downloader
 // @namespace    http://tampermonkey.net/multiweek
-// @version      1.2
+// @version      1.3
 // @description  3/4/5 haftalık periyotlarla Barchart'tan historical data indirir (date picker + başlangıç seçimi)
 // @author       You
 // @match        https://www.barchart.com/futures/quotes/*/historical-download
@@ -12,6 +12,7 @@
     'use strict';
 
     const DEFAULT_START_DATE = '01/05/2025'; // Varsayılan başlangıç (Pazar)
+    const MIN_SUNDAY_ISO = '1970-01-04'; // Pazar (date input step base)
 
     // Seçenekler: { label, interval (dakika), weeks, days (Pazar'dan Cuma'ya) }
     const OPTIONS = [
@@ -72,13 +73,6 @@
 
     function parseUserDate(dateStr) {
         return parseYYYYMMDD(dateStr) || parseMMDDYYYY(dateStr);
-    }
-
-    function getWeekSunday(date) {
-        const d = new Date(date.valueOf());
-        d.setHours(0, 0, 0, 0);
-        d.setDate(d.getDate() - d.getDay()); // 0 => Sunday
-        return d;
     }
 
     function generateDateRanges(option, startDate) {
@@ -284,7 +278,9 @@
                         type="date" 
                         id="multiweek-start-date"
                         value="${initialStartISO}"
+                        min="${MIN_SUNDAY_ISO}"
                         max="${maxDateISO}"
+                        step="7"
                         style="
                             flex: 1;
                             padding: 8px 10px;
@@ -294,52 +290,19 @@
                             box-sizing: border-box;
                         "
                     />
-                    <button id="multiweek-prev-week" type="button" title="Önceki Pazar" style="
-                        width: 44px;
-                        padding: 8px 0;
-                        border: 2px solid #ddd;
-                        border-radius: 6px;
-                        background: #fff;
-                        color: #333;
-                        cursor: pointer;
-                        font-weight: bold;
-                        font-size: 12px;
-                    ">−7</button>
-                    <button id="multiweek-next-week" type="button" title="Sonraki Pazar" style="
-                        width: 44px;
-                        padding: 8px 0;
-                        border: 2px solid #ddd;
-                        border-radius: 6px;
-                        background: #fff;
-                        color: #333;
-                        cursor: pointer;
-                        font-weight: bold;
-                        font-size: 12px;
-                    ">+7</button>
-                </div>
-                <div id="multiweek-start-date-hint" style="font-size: 11px; color: #777; margin-top: 6px;"></div>
-                <div style="display: flex; gap: 8px; margin-top: 8px;">
-                    <button id="multiweek-last-sunday" type="button" style="
-                        flex: 1;
+                    <button id="multiweek-default-start" type="button" title="Varsayılan başlangıç" style="
+                        width: 110px;
                         padding: 8px 10px;
                         border: 2px solid #ddd;
                         border-radius: 6px;
                         background: #fff;
                         color: #333;
                         cursor: pointer;
-                        font-size: 12px;
-                    ">Son Pazar</button>
-                    <button id="multiweek-default-start" type="button" style="
-                        flex: 1;
-                        padding: 8px 10px;
-                        border: 2px solid #ddd;
-                        border-radius: 6px;
-                        background: #fff;
-                        color: #333;
-                        cursor: pointer;
+                        font-weight: 600;
                         font-size: 12px;
                     ">Varsayılan</button>
                 </div>
+                <div id="multiweek-start-date-hint" style="font-size: 11px; color: #777; margin-top: 6px;">Sadece Pazar günleri seçilebilir.</div>
             </div>
             <div style="margin-bottom: 15px;">
                 <label style="display: block; margin-bottom: 5px; font-size: 13px; color: #666;">
@@ -385,151 +348,94 @@
 
         document.body.appendChild(panel);
 
-        const selector = document.getElementById('multiweek-selector');
-        const previewDiv = document.getElementById('preview-info');
-        const startBtn = document.getElementById('start-multiweek-btn');
-        const startDateInput = document.getElementById('multiweek-start-date');
-        const startDateHint = document.getElementById('multiweek-start-date-hint');
-        const prevWeekBtn = document.getElementById('multiweek-prev-week');
-        const nextWeekBtn = document.getElementById('multiweek-next-week');
-        const lastSundayBtn = document.getElementById('multiweek-last-sunday');
-        const defaultStartBtn = document.getElementById('multiweek-default-start');
+	        const selector = document.getElementById('multiweek-selector');
+	        const previewDiv = document.getElementById('preview-info');
+	        const startBtn = document.getElementById('start-multiweek-btn');
+	        const startDateInput = document.getElementById('multiweek-start-date');
+	        const startDateHint = document.getElementById('multiweek-start-date-hint');
+	        const defaultStartBtn = document.getElementById('multiweek-default-start');
 
-        function setControlButtonState(btn, enabled) {
-            if (!btn) return;
-            btn.disabled = !enabled;
-            btn.style.opacity = enabled ? '1' : '0.5';
-            btn.style.cursor = enabled ? 'pointer' : 'not-allowed';
-        }
-
-        function setStartButtonEnabled(enabled) {
-            startBtn.disabled = !enabled;
-            startBtn.style.opacity = enabled ? '1' : '0.6';
-            startBtn.style.cursor = enabled ? 'pointer' : 'not-allowed';
+	        function setStartButtonEnabled(enabled) {
+	            startBtn.disabled = !enabled;
+	            startBtn.style.opacity = enabled ? '1' : '0.6';
+	            startBtn.style.cursor = enabled ? 'pointer' : 'not-allowed';
         }
 
         function updatePreview() {
             const opt = OPTIONS[selector.value];
             const raw = (startDateInput?.value || '').trim();
 
-            const setError = (message) => {
-                previewDiv.innerHTML = `
-                    <div style="color: #D32F2F;">
-                        <strong>Hata:</strong> ${message}
-                    </div>
-                `;
-                if (startDateHint) startDateHint.textContent = '';
-                setStartButtonEnabled(false);
-                selectedOption = opt;
-                setControlButtonState(nextWeekBtn, false);
-            };
+	            const setError = (message) => {
+	                previewDiv.innerHTML = `
+	                    <div style="color: #D32F2F;">
+	                        <strong>Hata:</strong> ${message}
+	                    </div>
+	                `;
+	                if (startDateHint) startDateHint.textContent = 'Sadece Pazar günleri seçilebilir.';
+	                setStartButtonEnabled(false);
+	                selectedOption = opt;
+	            };
 
             if (!raw) {
                 setError('Lütfen başlangıç tarihini seçin.');
                 return;
             }
 
-            const pickedDate = parseUserDate(raw);
-            if (!pickedDate) {
-                setError('Tarih formatı hatalı.');
-                return;
-            }
+	            const pickedDate = parseUserDate(raw);
+	            if (!pickedDate) {
+	                setError('Tarih formatı hatalı.');
+	                return;
+	            }
 
-            const todayLocal = new Date();
-            todayLocal.setHours(0, 0, 0, 0);
+	            const todayLocal = new Date();
+	            todayLocal.setHours(0, 0, 0, 0);
 
-            const sunday = getWeekSunday(pickedDate);
-            const maxSunday = getWeekSunday(todayLocal);
+	            if (pickedDate > todayLocal) {
+	                setError('Başlangıç tarihi bugün sonrası olamaz.');
+	                return;
+	            }
 
-            if (sunday > todayLocal) {
-                setError('Başlangıç tarihi bugün sonrası olamaz.');
-                return;
-            }
+	            if (pickedDate.getDay() !== 0) {
+	                setError('Sadece Pazar günleri seçilebilir.');
+	                return;
+	            }
 
-            // Snap to Sunday for clean weekly boundaries.
-            const sundayISO = formatISODate(sunday);
-            if (startDateInput && startDateInput.value !== sundayISO) {
-                startDateInput.value = sundayISO;
-            }
+	            selectedStartDateStr = formatDate(pickedDate);
+	            const ranges = generateDateRanges(opt, pickedDate);
+	            if (ranges.length === 0) {
+	                setError('Hiç periyot bulunamadı!');
+	                return;
+	            }
 
-            selectedStartDateStr = formatDate(sunday);
-            const ranges = generateDateRanges(opt, sunday);
-            if (ranges.length === 0) {
-                setError('Hiç periyot bulunamadı!');
-                return;
-            }
+	            if (startDateHint) {
+	                startDateHint.textContent = `Seçili başlangıç: ${selectedStartDateStr} (Paz)`;
+	            }
 
-            if (startDateHint) {
-                if (pickedDate.valueOf() === sunday.valueOf()) {
-                    startDateHint.textContent = `Seçili başlangıç: ${selectedStartDateStr} (Paz)`;
-                } else {
-                    startDateHint.textContent = `Seçim: ${formatDate(pickedDate)} (${DAY_NAMES_TR[pickedDate.getDay()]}) → ${selectedStartDateStr} (Paz)`;
-                }
-            }
+	            previewDiv.innerHTML = `
+	                <div><strong>Interval:</strong> ${opt.interval} dakika</div>
+	                <div><strong>Periyot:</strong> ${opt.weeks} hafta (${opt.days} gün)</div>
+	                <div><strong>Başlangıç:</strong> ${selectedStartDateStr} (Paz)</div>
+	                <div><strong>Toplam dosya:</strong> ${ranges.length}</div>
+	                <div style="margin-top: 6px;"><strong>Örnek:</strong> ${ranges[0].start} → ${ranges[0].end}</div>
+	            `;
 
-            previewDiv.innerHTML = `
-                <div><strong>Interval:</strong> ${opt.interval} dakika</div>
-                <div><strong>Periyot:</strong> ${opt.weeks} hafta (${opt.days} gün)</div>
-                <div><strong>Başlangıç:</strong> ${selectedStartDateStr} (Paz)</div>
-                <div><strong>Toplam dosya:</strong> ${ranges.length}</div>
-                <div style="margin-top: 6px;"><strong>Örnek:</strong> ${ranges[0].start} → ${ranges[0].end}</div>
-            `;
+	            setStartButtonEnabled(true);
+	            selectedOption = opt;
+	        }
 
-            setStartButtonEnabled(true);
-            selectedOption = opt;
-
-            setControlButtonState(nextWeekBtn, sunday.valueOf() < maxSunday.valueOf());
-        }
-
-        function setPickerDate(date) {
-            if (!startDateInput) return;
+	        function setPickerDate(date) {
+	            if (!startDateInput) return;
             startDateInput.value = formatISODate(date);
             updatePreview();
         }
 
         updatePreview();
-        selector.addEventListener('change', updatePreview);
-        startDateInput.addEventListener('input', updatePreview);
+	        selector.addEventListener('change', updatePreview);
+	        startDateInput.addEventListener('input', updatePreview);
 
-        if (prevWeekBtn) {
-            prevWeekBtn.addEventListener('click', () => {
-                const base = parseUserDate((startDateInput?.value || '').trim()) || new Date();
-                const sunday = getWeekSunday(base);
-                sunday.setDate(sunday.getDate() - 7);
-                setPickerDate(sunday);
-            });
-        }
-
-        if (nextWeekBtn) {
-            nextWeekBtn.addEventListener('click', () => {
-                if (nextWeekBtn.disabled) return;
-                const base = parseUserDate((startDateInput?.value || '').trim()) || new Date();
-                const sunday = getWeekSunday(base);
-                sunday.setDate(sunday.getDate() + 7);
-
-                const todayLocal = new Date();
-                todayLocal.setHours(0, 0, 0, 0);
-                const maxSunday = getWeekSunday(todayLocal);
-                if (sunday > maxSunday) {
-                    setPickerDate(maxSunday);
-                    return;
-                }
-
-                setPickerDate(sunday);
-            });
-        }
-
-        if (lastSundayBtn) {
-            lastSundayBtn.addEventListener('click', () => {
-                const todayLocal = new Date();
-                todayLocal.setHours(0, 0, 0, 0);
-                setPickerDate(getWeekSunday(todayLocal));
-            });
-        }
-
-        if (defaultStartBtn) {
-            defaultStartBtn.addEventListener('click', () => {
-                const d = parseMMDDYYYY(DEFAULT_START_DATE);
+	        if (defaultStartBtn) {
+	            defaultStartBtn.addEventListener('click', () => {
+	                const d = parseMMDDYYYY(DEFAULT_START_DATE);
                 if (!d) return;
                 setPickerDate(d);
             });
